@@ -555,10 +555,8 @@
     <div id="transition-badge">職人準備中...</div>
   </div>
 
-  <!-- 目標網頁無縫載入區 (亦可支援直接 window.location.href 跳轉 + pageshow bfcache 自動白畫面退回動畫) -->
-  <div id="subapp-frame-container">
-    <iframe id="subapp-iframe" title="Target Web App" allow="accelerometer; gyroscope; autoplay; clipboard-write; encrypted-media"></iframe>
-  </div>
+  <!-- 目標網頁無縫載入區 (動態建立與銷毀 iframe，避免瀏覽器歷史堆疊殘留舊網址與 about:blank) -->
+  <div id="subapp-frame-container"></div>
 
   <div id="canvas-container"></div>
 
@@ -2272,7 +2270,7 @@
     const overlayEl = document.getElementById('portal-transition-overlay');
     const badgeEl = document.getElementById('transition-badge');
     const subappContainer = document.getElementById('subapp-frame-container');
-    const subappIframe = document.getElementById('subapp-iframe');
+    let subappIframe = null;
     const raycaster = new THREE.Raycaster();
     const pointerNDC = new THREE.Vector2();
 
@@ -2708,22 +2706,17 @@
         if (targetUrl) {
           saveCurrentState();
           try {
-            sessionStorage.setItem(STORAGE_KEYS.returningFromUrl, '1');
             sessionStorage.setItem(STORAGE_KEYS.returningCharIdx, String(transitionState.portal.charIdx));
           } catch (e) {}
 
           renderLoopPaused = true;
           if (USE_DIRECT_LOCATION_JUMP) {
+            try {
+              sessionStorage.setItem(STORAGE_KEYS.returningFromUrl, '1');
+            } catch (e) {}
             window.location.href = targetUrl;
           } else {
-            subappIframe.src = targetUrl;
-            subappContainer.classList.add('active');
-            document.body.classList.add('in-subapp');
-            overlayEl.style.opacity = '0';
-            overlayEl.classList.remove('blocking');
-            try {
-              history.pushState({ inSubapp: true }, '');
-            } catch (e) {}
+            openSubapp(targetUrl);
           }
           return;
         }
@@ -2772,7 +2765,7 @@
         }
       } catch (err) {}
 
-      if (e.persisted || isReturning || renderLoopPaused) {
+      if (!subappContainer.classList.contains('active') && (e.persisted || isReturning || renderLoopPaused)) {
         startReturnFromWhiteTransition();
       }
     });
@@ -2781,38 +2774,115 @@
       if (sessionStorage.getItem(STORAGE_KEYS.returningFromUrl) === '1') {
         sessionStorage.removeItem(STORAGE_KEYS.returningFromUrl);
         setTimeout(() => {
-          startReturnFromWhiteTransition();
+          if (!subappContainer.classList.contains('active')) {
+            startReturnFromWhiteTransition();
+          }
         }, 30);
       }
     } catch (e) {}
 
     // ==========================================
-    // 12. 左下角液態玻璃按鈕 (返回 & 重新整理) 互動邏輯
+    // 12. 左下角液態玻璃按鈕 (返回 & 重新整理) 與手機返回手勢防逃逸邏輯
     // ==========================================
     const liquidBackBtn = document.getElementById('liquid-back-btn');
     const liquidRefreshBtn = document.getElementById('liquid-refresh-btn');
+
+    function ensurePortalHistoryGuard() {
+      try {
+        if (!history.state || (!history.state.portalGuard && !history.state.inSubapp)) {
+          history.replaceState({ portalRoot: true }, '');
+          history.pushState({ portalGuard: true }, '');
+        }
+      } catch (e) {}
+    }
+    ensurePortalHistoryGuard();
+
+    function openSubapp(targetUrl) {
+      subappContainer.innerHTML = '';
+      const iframe = document.createElement('iframe');
+      iframe.id = 'subapp-iframe';
+      iframe.title = 'Target Web App';
+      iframe.setAttribute('allow', 'accelerometer; gyroscope; autoplay; clipboard-write; encrypted-media');
+      iframe.src = targetUrl;
+      subappContainer.appendChild(iframe);
+      subappIframe = iframe;
+
+      subappContainer.classList.add('active');
+      document.body.classList.add('in-subapp');
+      overlayEl.style.opacity = '0';
+      overlayEl.classList.remove('blocking');
+
+      try {
+        if (history.state && history.state.inSubapp) {
+          history.replaceState({ inSubapp: true, url: targetUrl }, '');
+        } else {
+          if (!history.state || !history.state.portalGuard) {
+            history.replaceState({ portalRoot: true }, '');
+            history.pushState({ portalGuard: true }, '');
+          }
+          history.pushState({ inSubapp: true, url: targetUrl }, '');
+        }
+      } catch (e) {}
+    }
 
     function exitSubapp() {
       if (!subappContainer.classList.contains('active')) return;
       document.body.classList.remove('in-subapp');
       subappContainer.classList.remove('active');
-      subappIframe.src = 'about:blank';
+      // 徹底移除 iframe DOM 節點，杜絕設定 about:blank 或舊網址殘留於瀏覽器歷史紀錄堆疊
+      subappContainer.innerHTML = '';
+      subappIframe = null;
       startReturnFromWhiteTransition();
     }
+
+    // 支援子應用完成頂層 OAuth 登入重導向後自動無縫返回並開啟原角色子應用
+    try {
+      const autoOpenUrl = sessionStorage.getItem('sushi_portal_auto_open_subapp');
+      if (autoOpenUrl) {
+        sessionStorage.removeItem('sushi_portal_auto_open_subapp');
+        renderLoopPaused = true;
+        openSubapp(autoOpenUrl);
+      }
+    } catch (e) {}
 
     window.addEventListener('popstate', (e) => {
       if (subappContainer.classList.contains('active')) {
         exitSubapp();
+        try {
+          if (!history.state || !history.state.portalGuard) {
+            history.pushState({ portalGuard: true }, '');
+          }
+        } catch (err) {}
+        return;
       }
+      if (isGridMode && gridTransitionState === 'active') {
+        exitGridMode();
+        try {
+          if (!history.state || !history.state.portalGuard) {
+            history.pushState({ portalGuard: true }, '');
+          }
+        } catch (err) {}
+        return;
+      }
+      // 已在傳送門首頁時，攔截手機返回手勢並重新補回護欄狀態，確保絕不跳離傳送門頁面
+      try {
+        if (!history.state || !history.state.portalGuard) {
+          history.pushState({ portalGuard: true }, '');
+        }
+      } catch (err) {}
     });
 
     liquidBackBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       if (subappContainer.classList.contains('active')) {
         exitSubapp();
-        if (history.state && history.state.inSubapp) {
-          history.back();
-        }
+        try {
+          if (history.state && history.state.inSubapp) {
+            history.back();
+          } else if (!history.state || !history.state.portalGuard) {
+            history.pushState({ portalGuard: true }, '');
+          }
+        } catch (err) {}
         return;
       }
       if (isGridAnimating()) {
@@ -2826,24 +2896,21 @@
         exitGridMode();
         return;
       }
-      if (window.history.length > 1 && document.referrer) {
-        window.history.back();
-      } else {
-        currentStepIndex = 0;
-        targetRingRotationY = 0;
-        saveCurrentState();
-        startReturnFromWhiteTransition();
-      }
+      currentStepIndex = 0;
+      targetRingRotationY = 0;
+      saveCurrentState();
+      startReturnFromWhiteTransition();
     });
 
     liquidRefreshBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       saveCurrentState();
-      if (subappContainer.classList.contains('active') && subappIframe.src) {
+      if (subappContainer.classList.contains('active') && subappIframe && subappIframe.src) {
         try {
           subappIframe.contentWindow.location.reload();
         } catch (err) {
-          subappIframe.src = subappIframe.src;
+          const currentUrl = subappIframe.src;
+          openSubapp(currentUrl);
         }
       } else {
         window.location.reload();
