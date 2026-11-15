@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sushi-portal-v5';
+const CACHE_NAME = 'sushi-portal-v6';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',

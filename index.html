@@ -2614,6 +2614,44 @@
       badgeEl.style.display = targetUrl ? 'none' : 'block';
     }
 
+    function restorePortalDirect() {
+      const savedState = loadSavedState();
+      currentStepIndex = savedState.stepIdx || 0;
+      characterOrder = [...savedState.charOrder];
+      tiltEnabled = savedState.tiltEnabled;
+      syncTiltUIFromState();
+
+      if (!isGridMode) {
+        if (savedState.mode !== currentMode || savedState.count !== numCards || Math.abs(savedState.gap - cardGap) > 0.001) {
+          currentMode = savedState.mode;
+          cardGap = savedState.gap;
+          applyCardCount(savedState.count);
+          syncUIFromState();
+        }
+        targetRingRotationY = currentMode === 'A' ? (-currentStepIndex * angleStep) : (currentStepIndex * angleStep);
+        ringRotationY = targetRingRotationY;
+      }
+      updateDynamicCharacterAssignment();
+
+      const baseCam = getBaseCameraTransform();
+      camera.position.set(0, 0.05, baseCam.z);
+      camera.lookAt(0, 0.05, baseCam.lookAtZ);
+
+      overlayEl.style.opacity = '0';
+      overlayEl.classList.remove('blocking');
+      badgeEl.classList.remove('visible');
+      badgeEl.style.display = 'none';
+
+      transitionState = null;
+      isTransitioning = false;
+
+      if (renderLoopPaused) {
+        renderLoopPaused = false;
+        lastFrameTime = performance.now();
+        requestAnimationFrame(animate);
+      }
+    }
+
     function startReturnFromWhiteTransition() {
       const savedState = loadSavedState();
       currentStepIndex = savedState.stepIdx || 0;
@@ -2766,7 +2804,7 @@
       } catch (err) {}
 
       if (!subappContainer.classList.contains('active') && (e.persisted || isReturning || renderLoopPaused)) {
-        startReturnFromWhiteTransition();
+        restorePortalDirect();
       }
     });
 
@@ -2775,7 +2813,7 @@
         sessionStorage.removeItem(STORAGE_KEYS.returningFromUrl);
         setTimeout(() => {
           if (!subappContainer.classList.contains('active')) {
-            startReturnFromWhiteTransition();
+            restorePortalDirect();
           }
         }, 30);
       }
@@ -2832,7 +2870,7 @@
       // 徹底移除 iframe DOM 節點，杜絕設定 about:blank 或舊網址殘留於瀏覽器歷史紀錄堆疊
       subappContainer.innerHTML = '';
       subappIframe = null;
-      startReturnFromWhiteTransition();
+      restorePortalDirect();
     }
 
     // 支援子應用完成頂層 OAuth 登入重導向後自動無縫返回並開啟原角色子應用
@@ -2889,7 +2927,7 @@
         return;
       }
       if (isTransitioning) {
-        startReturnFromWhiteTransition();
+        restorePortalDirect();
         return;
       }
       if (isGridMode) {
@@ -2899,7 +2937,7 @@
       currentStepIndex = 0;
       targetRingRotationY = 0;
       saveCurrentState();
-      startReturnFromWhiteTransition();
+      restorePortalDirect();
     });
 
     liquidRefreshBtn.addEventListener('click', (e) => {
