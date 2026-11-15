@@ -577,13 +577,13 @@
     // 角色 1 (抹茶紅豆聖代): null -> 顯示「職人準備中...」並從白畫面退回傳送門首頁
     // 角色 2 (鮭魚握壽司): "https://bard0228.github.io/daily-ledger/" -> 白畫面過程完全無文字，直接進入目標網頁；返回時從白畫面動畫退回傳送門首頁
     // 角色 3 (鮪魚握壽司): "https://chileisha-bard.web.app" -> 白畫面過程完全無文字，直接進入目標網頁；返回時從白畫面動畫退回傳送門首頁
-    // 角色 4 (紅豆年糕湯): null -> 顯示「職人準備中...」
+    // 角色 4 (紅豆年糕湯 / 麻糬紅豆湯): "https://bard0228.github.io/pitchlab/" -> 台灣好聲音
     // 角色 5 (炙燒蔥花肉握壽司): null -> 顯示「職人準備中...」
     const CHARACTER_TARGET_URLS = [
       null,                           // 角色 1: 抹茶紅豆聖代
       "https://bard0228.github.io/daily-ledger/", // 角色 2: 鮭魚握壽司
       "https://chileisha-bard.web.app",// 角色 3: 鮪魚握壽司
-      null,                           // 角色 4: 紅豆年糕湯
+      "https://bard0228.github.io/pitchlab/", // 角色 4: 紅豆年糕湯 (麻糬紅豆湯 / 台灣好聲音)
       null,                           // 角色 5: 炙燒蔥花肉握壽司
       null,                           // 角色 6: 茶碗蒸
       null,                           // 角色 7: 玉子燒握壽司
@@ -2802,7 +2802,7 @@
       const iframe = document.createElement('iframe');
       iframe.id = 'subapp-iframe';
       iframe.title = 'Target Web App';
-      iframe.setAttribute('allow', 'accelerometer; gyroscope; autoplay; clipboard-write; encrypted-media');
+      iframe.setAttribute('allow', 'accelerometer; gyroscope; autoplay; clipboard-write; encrypted-media; microphone');
       iframe.src = targetUrl;
       subappContainer.appendChild(iframe);
       subappIframe = iframe;
