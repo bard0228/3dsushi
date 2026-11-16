@@ -560,7 +560,12 @@
 
   <div id="canvas-container"></div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="three.min.js"></script>
+  <script>
+    if (typeof THREE === 'undefined') {
+      document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>');
+    }
+  </script>
   <script>
     // ==========================================
     // 1. 16 隻角色的精準無損 RGBA 貼圖與輪廓資料 (原 5 隻 + 新增 11 隻)
@@ -583,20 +588,50 @@
       null,                           // 角色 1: 抹茶紅豆聖代
       "https://bard0228.github.io/daily-ledger/", // 角色 2: 鮭魚握壽司
       "https://chileisha-bard.web.app",// 角色 3: 鮪魚握壽司
-      "https://bard0228.github.io/pitchlab/", // 角色 4: 紅豆年糕湯 (麻糬紅豆湯 / 台灣好聲音)
+      "https://bard0228.github.io/pitchlab/", // 角色 4: 紅豆年糕湯 (麻糬紅豆湯 / 台灣好聲音) -> 強制外部瀏覽器開啟
       null,                           // 角色 5: 炙燒蔥花肉握壽司
       null,                           // 角色 6: 茶碗蒸
-      "https://bard0228.github.io/lovetravel/", // 角色 7: 玉子燒握壽司 (旅記 LoveTravel)
+      "https://bard0228.github.io/lovetravel/", // 角色 7: 玉子燒握壽司 (旅記 LoveTravel) -> 強制外部瀏覽器開啟
       null,                           // 角色 8: 鮮蝦握壽司
       null,                           // 角色 9: 味噌湯
       null,                           // 角色 10: 豆皮壽司
       null,                           // 角色 11: 銅鑼燒
       null,                           // 角色 12: 鮮蝦手捲
-      "https://bard0228.github.io/workout/", // 角色 13: 蘆筍手捲
+      "https://bard0228.github.io/workout/", // 角色 13: 蘆筍手捲 (健身計畫 Iron Ledger) -> 強制外部瀏覽器開啟
       null,                           // 角色 14: 鯖魚握壽司
       "https://bard0228.github.io/stock-ai-pwa/", // 角色 15: 千層蛋糕
       null                            // 角色 16: 干貝軍艦壽司
     ];
+
+    // 強制以外部瀏覽器開啟的角色索引 (0-based)：
+    // 角色 4 (麻糬紅豆湯 / 紅豆年糕湯, idx 3)
+    // 角色 7 (玉子燒握壽司, idx 6)
+    // 角色 13 (蘆筍手捲, idx 12)
+    const EXTERNAL_BROWSER_CHAR_INDICES = new Set([3, 6, 12]);
+
+    function openExternalBrowserUrl(url) {
+      if (!url) return;
+      let opened = false;
+      try {
+        const win = window.open(url, '_blank', 'noopener,noreferrer');
+        if (win) {
+          opened = true;
+        }
+      } catch (e) {}
+
+      if (!opened) {
+        try {
+          const a = document.createElement('a');
+          a.href = url;
+          a.target = '_blank';
+          a.rel = 'noopener noreferrer';
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          opened = true;
+        } catch (e) {}
+      }
+    }
 
     // 導航模式設定：
     // 使用內嵌無縫 iframe 容器 (USE_DIRECT_LOCATION_JUMP = false)，左下角微透明液態玻璃「上一頁」與「重新整理」常駐懸浮於子應用上方，
@@ -2564,12 +2599,25 @@
 
     function startPortalEnterTransition(portal) {
       if (isTransitioning || isGridAnimating()) return;
+
+      const targetUrl = CHARACTER_TARGET_URLS[portal.charIdx];
+      const isExternal = Boolean(targetUrl && EXTERNAL_BROWSER_CHAR_INDICES.has(portal.charIdx));
+
+      // 若為強制以外部瀏覽器開啟之角色 (麻糬紅豆湯、玉子燒握壽司、蘆筍手捲)，在點擊事件鏈中直接開啟外部瀏覽器，避免 Popup 被瀏覽器阻擋
+      if (isExternal) {
+        saveCurrentState();
+        try {
+          sessionStorage.setItem(STORAGE_KEYS.returningCharIdx, String(portal.charIdx));
+        } catch (e) {}
+        openExternalBrowserUrl(targetUrl);
+        return;
+      }
+
       isTransitioning = true;
 
       const patternHex = portal.asset.patternColor;
       const startCamPos = camera.position.clone();
       const baseCam = getBaseCameraTransform();
-      const targetUrl = CHARACTER_TARGET_URLS[portal.charIdx];
 
       let targetCamX = 0;
       let targetCamY = 0.05;
@@ -2746,6 +2794,12 @@
           try {
             sessionStorage.setItem(STORAGE_KEYS.returningCharIdx, String(transitionState.portal.charIdx));
           } catch (e) {}
+
+          if (EXTERNAL_BROWSER_CHAR_INDICES.has(transitionState.portal.charIdx)) {
+            openExternalBrowserUrl(targetUrl);
+            restorePortalDirect();
+            return;
+          }
 
           renderLoopPaused = true;
           if (USE_DIRECT_LOCATION_JUMP) {

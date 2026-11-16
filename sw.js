@@ -1,4 +1,4 @@
-const CACHE_NAME = 'sushi-portal-v7';
+const CACHE_NAME = 'sushi-portal-v8';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -11,6 +11,7 @@ const ASSETS_TO_CACHE = [
   './icon-1024.png',
   './apple-touch-icon.png',
   './favicon-32.png',
+  './three.min.js',
   'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js'
 ];
 
