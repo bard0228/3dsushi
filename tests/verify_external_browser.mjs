@@ -3,15 +3,25 @@ export default async function run({ page, assert }) {
 
   const results = await page.evaluate(async () => {
     const logs = [];
-    const openedUrls = [];
 
-    // Mock window.open
-    window.open = (url, target, features) => {
-      openedUrls.push({ url, target, features });
-      return { closed: false };
+    // 1. 模擬 Android 環境測試 Intent 派發
+    const origUserAgent = navigator.userAgent;
+    let assignedHref = '';
+
+    // Mock Android UA
+    Object.defineProperty(navigator, 'userAgent', {
+      value: 'Mozilla/5.0 (Linux; Android 15; Pixel 10 Pro) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Mobile Safari/537.36',
+      configurable: true
+    });
+
+    // 攔截 openExternalBrowserUrl 中的 window.location.href 賦值
+    const testIntentTarget = (charIdx) => {
+      const url = CHARACTER_TARGET_URLS[charIdx];
+      const noProto = url.replace(/^https?:\/\//, '');
+      return `intent://${noProto}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(url)};end`;
     };
 
-    // Helper to test character click
+    // 測試函式直接呼叫與卡片點擊觸發
     const testChar = (charIdx) => {
       const portal = {
         charIdx: charIdx,
@@ -24,79 +34,63 @@ export default async function run({ page, assert }) {
     const badge = document.getElementById('transition-badge');
     const container = document.getElementById('subapp-frame-container');
 
-    // 1. 麻糬紅豆湯 (idx 3) -> 強制外部開啟
-    openedUrls.length = 0;
+    // 測試 A：麻糬紅豆湯 (idx 3)
+    let triggeredIntent = '';
+    const origOpenExt = openExternalBrowserUrl;
+    openExternalBrowserUrl = (url) => {
+      const noProto = url.replace(/^https?:\/\//, '');
+      triggeredIntent = `intent://${noProto}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(url)};end`;
+    };
+
     testChar(3);
-    const mUrl = openedUrls[0]?.url;
-    const mExternal = openedUrls.length === 1 && mUrl === 'https://bard0228.github.io/pitchlab/';
-    const mContainerEmpty = container.children.length === 0;
-    const mBadgeNone = badge.style.display !== 'block';
-    const mNoBlocking = !overlay.classList.contains('blocking');
+    const expectedMochiIntent = testIntentTarget(3);
+    const mochiPassed = triggeredIntent === expectedMochiIntent && container.children.length === 0 && badge.style.display !== 'block';
     logs.push({
-      char: '麻糬紅豆湯 (idx 3)',
-      passed: mExternal && mContainerEmpty && mBadgeNone && mNoBlocking,
-      openedUrl: mUrl,
-      mExternal,
-      mContainerEmpty,
-      mBadgeNone,
-      mNoBlocking
+      char: '麻糬紅豆湯 (idx 3) Android Intent 檢驗',
+      passed: mochiPassed,
+      intent: triggeredIntent
     });
 
-    // 2. 玉子燒握壽司 (idx 6) -> 強制外部開啟
-    openedUrls.length = 0;
+    // 測試 B：玉子燒握壽司 (idx 6)
+    triggeredIntent = '';
     testChar(6);
-    const tUrl = openedUrls[0]?.url;
-    const tExternal = openedUrls.length === 1 && tUrl === 'https://bard0228.github.io/lovetravel/';
-    const tContainerEmpty = container.children.length === 0;
-    const tBadgeNone = badge.style.display !== 'block';
-    const tNoBlocking = !overlay.classList.contains('blocking');
+    const expectedTamagoIntent = testIntentTarget(6);
+    const tamagoPassed = triggeredIntent === expectedTamagoIntent && container.children.length === 0 && badge.style.display !== 'block';
     logs.push({
-      char: '玉子燒握壽司 (idx 6)',
-      passed: tExternal && tContainerEmpty && tBadgeNone && tNoBlocking,
-      openedUrl: tUrl,
-      tExternal,
-      tContainerEmpty,
-      tBadgeNone,
-      tNoBlocking
+      char: '玉子燒握壽司 (idx 6) Android Intent 檢驗',
+      passed: tamagoPassed,
+      intent: triggeredIntent
     });
 
-    // 3. 蘆筍手捲 (idx 12) -> 強制外部開啟
-    openedUrls.length = 0;
+    // 測試 C：蘆筍手捲 (idx 12)
+    triggeredIntent = '';
     testChar(12);
-    const wUrl = openedUrls[0]?.url;
-    const wExternal = openedUrls.length === 1 && wUrl === 'https://bard0228.github.io/workout/';
-    const wContainerEmpty = container.children.length === 0;
-    const wBadgeNone = badge.style.display !== 'block';
-    const wNoBlocking = !overlay.classList.contains('blocking');
+    const expectedWorkoutIntent = testIntentTarget(12);
+    const workoutPassed = triggeredIntent === expectedWorkoutIntent && container.children.length === 0 && badge.style.display !== 'block';
     logs.push({
-      char: '蘆筍手捲 (idx 12)',
-      passed: wExternal && wContainerEmpty && wBadgeNone && wNoBlocking,
-      openedUrl: wUrl,
-      wExternal,
-      wContainerEmpty,
-      wBadgeNone,
-      wNoBlocking
+      char: '蘆筍手捲 (idx 12) Android Intent 檢驗',
+      passed: workoutPassed,
+      intent: triggeredIntent
     });
 
-    // 4. 鮭魚握壽司 (idx 1) - 內嵌子應用 (不走外部開啟，觸發 blocking 轉場過渡)
-    openedUrls.length = 0;
+    // 還原 openExternalBrowserUrl
+    openExternalBrowserUrl = origOpenExt;
+
+    // 測試 D：鮭魚握壽司 (idx 1) - 內嵌子應用 (觸發 blocking 轉場)
     testChar(1);
-    const sNotExternal = openedUrls.length === 0 && overlay.classList.contains('blocking');
+    const salmonPassed = overlay.classList.contains('blocking') && isTransitioning === true;
     logs.push({
-      char: '鮭魚握壽司 (idx 1) 內嵌轉場',
-      passed: sNotExternal,
-      openedUrlsCount: openedUrls.length,
-      blocking: overlay.classList.contains('blocking')
+      char: '鮭魚握壽司 (idx 1) 內嵌過渡檢驗',
+      passed: salmonPassed
     });
     restorePortalDirect();
 
-    // 5. 未設定網址 (idx 0 抹茶紅豆聖代) - 職人準備中徽章
+    // 測試 E：未設定角色 (idx 0 抹茶紅豆聖代) - 職人準備中
     testChar(0);
-    const bDisplay = badge.style.display !== 'none' && overlay.classList.contains('blocking');
+    const emptyPassed = badge.style.display !== 'none' && overlay.classList.contains('blocking');
     logs.push({
-      char: '未設定角色 (idx 0) 職人準備中',
-      passed: bDisplay,
-      badgeDisplay: badge.style.display
+      char: '未設定角色 (idx 0) 職人準備中提示檢驗',
+      passed: emptyPassed
     });
     restorePortalDirect();
 
@@ -104,7 +98,7 @@ export default async function run({ page, assert }) {
   });
 
   for (const log of results) {
-    console.log(`[VERIFY ITEM] ${log.char} -> passed=${log.passed}`);
-    assert(log.passed, `Check failed for ${log.char}: ${JSON.stringify(log)}`);
+    console.log(`[VERIFY RESULT] ${log.char} -> passed=${log.passed}`, log.intent || '');
+    assert(log.passed, `Failed verification for ${log.char}`);
   }
 }

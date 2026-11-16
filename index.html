@@ -611,6 +611,20 @@
 
     function openExternalBrowserUrl(url) {
       if (!url) return;
+
+      const isAndroid = /Android/i.test(navigator.userAgent);
+      if (isAndroid) {
+        try {
+          const noProto = url.replace(/^https?:\/\//, '');
+          // 透過 Android 系統 Intent 協定強制脫離 PWA WebAPK 沙盒，喚起外部獨立 Chrome 瀏覽器主程式
+          // 附帶 S.browser_fallback_url 確保在無 Chrome 時自動 fallback
+          const intentUrl = `intent://${noProto}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${encodeURIComponent(url)};end`;
+          
+          window.location.href = intentUrl;
+          return;
+        } catch (e) {}
+      }
+
       let opened = false;
       try {
         const win = window.open(url, '_blank', 'noopener,noreferrer');
